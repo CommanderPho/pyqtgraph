@@ -20,7 +20,7 @@ class CheckTable(QtWidgets.QWidget):
         self.rowWidgets = []
         self.oldRows = {}  ## remember settings from removed rows; reapply if they reappear.
         
-        
+    # Columns:
     def updateColumns(self, columns):
         # add only:
         self.headers = []
@@ -56,26 +56,27 @@ class CheckTable(QtWidgets.QWidget):
         #     #QtCore.QObject.connect(check, QtCore.SIGNAL('stateChanged(int)'), self.checkChanged)
         #     check.stateChanged.connect(self.checkChanged)
         
-    # def removeColumn(self, name):
-    #     row = self.rowNames.index(name)
+    def removeColumn(self, name):
+        col = self.columnNames.index(name)
     #     self.oldRows[name] = self.saveState()['rows'][row]  ## save for later
-    #     self.rowNames.pop(row)
-    #     for w in self.rowWidgets[row]:
-    #         w.setParent(None)
-    #         #QtCore.QObject.disconnect(w, QtCore.SIGNAL('stateChanged(int)'), self.checkChanged)
-    #         if isinstance(w, QtWidgets.QCheckBox):
-    #             w.stateChanged.disconnect(self.checkChanged)
-    #     self.rowWidgets.pop(row)
-    #     for i in range(row, len(self.rowNames)):
-    #         widgets = self.rowWidgets[i]
-    #         for j in range(len(widgets)):
-    #             widgets[j].setParent(None)
-    #             self.layout.addWidget(widgets[j], i+1, j)
-                
-                
-                
-    # Rows:
+        self.columnNames.pop(col)
+        # remove the header widget:
+        self.headers[col].setParent(None)
+        self.headers.pop(col)
+        # for i in range(col, len(self.rowNames)):
+        # Remove all of the columns row's widgets:
+        # remove this column's widget in each row:
+        for i in range(0, len(self.rowNames)):
+            widgets = self.rowWidgets[i]
+            widgets[col].setParent(None)
+            if isinstance(widgets[col], QtWidgets.QCheckBox):
+                widgets[col].stateChanged.disconnect(self.checkChanged)
+            self.rowWidgets[i].pop(col) # remove it from the list
 
+        # TODO: remove it from the old rows as well?
+        
+        
+    ## Rows:
     def updateRows(self, rows):
         for r in self.rowNames[:]:
             if r not in rows:
