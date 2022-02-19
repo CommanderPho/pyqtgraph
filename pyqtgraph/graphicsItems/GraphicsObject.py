@@ -1,26 +1,33 @@
-from ..Qt import QtGui, QtCore, QT_LIB
-if QT_LIB in ['PyQt4', 'PyQt5']:
-    import sip
+from ..Qt import QT_LIB, QtWidgets
+
+if QT_LIB.startswith('PyQt'):
+    from ..Qt import sip
+
 from .GraphicsItem import GraphicsItem
 
 __all__ = ['GraphicsObject']
-class GraphicsObject(GraphicsItem, QtGui.QGraphicsObject):
+class GraphicsObject(GraphicsItem, QtWidgets.QGraphicsObject):
     """
-    **Bases:** :class:`GraphicsItem <pyqtgraph.graphicsItems.GraphicsItem>`, :class:`QtGui.QGraphicsObject`
+    **Bases:** :class:`GraphicsItem <pyqtgraph.graphicsItems.GraphicsItem>`, :class:`QtWidgets.QGraphicsObject`
 
     Extension of QGraphicsObject with some useful methods (provided by :class:`GraphicsItem <pyqtgraph.graphicsItems.GraphicsItem>`)
     """
-    _qtBaseClass = QtGui.QGraphicsObject
+    _qtBaseClass = QtWidgets.QGraphicsObject
     def __init__(self, *args):
         self.__inform_view_on_changes = True
-        QtGui.QGraphicsObject.__init__(self, *args)
-        self.setFlag(self.ItemSendsGeometryChanges)
+        QtWidgets.QGraphicsObject.__init__(self, *args)
+        self.setFlag(self.GraphicsItemFlag.ItemSendsGeometryChanges)
         GraphicsItem.__init__(self)
         
     def itemChange(self, change, value):
-        ret = QtGui.QGraphicsObject.itemChange(self, change, value)
-        if change in [self.ItemParentHasChanged, self.ItemSceneHasChanged]:
-            self.parentChanged()
+        ret = super().itemChange(change, value)
+        if change in [self.GraphicsItemChange.ItemParentHasChanged, self.GraphicsItemChange.ItemSceneHasChanged]:
+            import types
+            if isinstance(self.parentChanged, types.MethodType):
+                self.parentChanged()
+            else:
+                # workaround PySide6 6.2.2 issue https://bugreports.qt.io/browse/PYSIDE-1730
+                getattr(self.__class__, 'parentChanged')(self)
         try:
             inform_view_on_change = self.__inform_view_on_changes
         except AttributeError:
@@ -28,12 +35,12 @@ class GraphicsObject(GraphicsItem, QtGui.QGraphicsObject):
             # (if it was triggered during the gc of the object).
             pass
         else:
-            if inform_view_on_change and change in [self.ItemPositionHasChanged, self.ItemTransformHasChanged]:
+            if inform_view_on_change and change in [self.GraphicsItemChange.ItemPositionHasChanged, self.GraphicsItemChange.ItemTransformHasChanged]:
                 self.informViewBoundsChanged()
             
         ## workaround for pyqt bug:
         ## http://www.riverbankcomputing.com/pipermail/pyqt/2012-August/031818.html
-        if QT_LIB in ['PyQt4', 'PyQt5'] and change == self.ItemParentChange and isinstance(ret, QtGui.QGraphicsItem):
-            ret = sip.cast(ret, QtGui.QGraphicsItem)
+        if QT_LIB == 'PyQt5' and change == self.GraphicsItemChange.ItemParentChange and isinstance(ret, QtWidgets.QGraphicsItem):
+            ret = sip.cast(ret, QtWidgets.QGraphicsItem)
 
         return ret

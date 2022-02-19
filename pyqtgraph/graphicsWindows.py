@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 DEPRECATED:  The classes below are convenience classes that create a new window
 containting a single, specific widget. These classes are now unnecessary because
@@ -6,11 +5,14 @@ it is possible to place any widget into its own window by simply calling its
 show() method.
 """
 
-from .Qt import QtCore, QtGui, mkQApp
-from .widgets.PlotWidget import *
+__all__ = ['GraphicsWindow', 'TabWindow', 'PlotWindow', 'ImageWindow']
+
+import warnings
+
 from .imageview import *
+from .Qt import QtCore, QtWidgets, mkQApp
 from .widgets.GraphicsLayoutWidget import GraphicsLayoutWidget
-from .widgets.GraphicsView import GraphicsView
+from .widgets.PlotWidget import *
 
 
 class GraphicsWindow(GraphicsLayoutWidget):
@@ -21,6 +23,11 @@ class GraphicsWindow(GraphicsLayoutWidget):
     is intended for use from the interactive python prompt.
     """
     def __init__(self, title=None, size=(800,600), **kargs):
+        warnings.warn(
+            'GraphicsWindow is deprecated, use GraphicsLayoutWidget instead,'
+            'will be removed in 0.13',
+            DeprecationWarning, stacklevel=2
+        )
         mkQApp()
         GraphicsLayoutWidget.__init__(self, **kargs)
         self.resize(*size)
@@ -29,15 +36,19 @@ class GraphicsWindow(GraphicsLayoutWidget):
         self.show()
         
 
-class TabWindow(QtGui.QMainWindow):
+class TabWindow(QtWidgets.QMainWindow):
     """
     (deprecated)
     """
     def __init__(self, title=None, size=(800,600)):
+        warnings.warn(
+            'TabWindow is deprecated, will be removed in 0.13',
+            DeprecationWarning, stacklevel=2
+        )
         mkQApp()
-        QtGui.QMainWindow.__init__(self)
+        QtWidgets.QMainWindow.__init__(self)
         self.resize(*size)
-        self.cw = QtGui.QTabWidget()
+        self.cw = QtWidgets.QTabWidget()
         self.setCentralWidget(self.cw)
         if title is not None:
             self.setWindowTitle(title)
@@ -54,11 +65,20 @@ class PlotWindow(PlotWidget):
     (deprecated; use :class:`~pyqtgraph.PlotWidget` instead)
     """
     def __init__(self, title=None, **kargs):
+        warnings.warn(
+            'PlotWindow is deprecated, use PlotWidget instead,'
+            'will be removed in 0.13',
+            DeprecationWarning, stacklevel=2
+        )    
         mkQApp()
+        self.win = QtWidgets.QMainWindow()
         PlotWidget.__init__(self, **kargs)
+        self.win.setCentralWidget(self)
+        for m in ['resize']:
+            setattr(self, m, getattr(self.win, m))
         if title is not None:
-            self.setWindowTitle(title)
-        self.show()
+            self.win.setWindowTitle(title)
+        self.win.show()
 
     def closeEvent(self, event):
         PlotWidget.closeEvent(self, event)
@@ -72,15 +92,26 @@ class ImageWindow(ImageView):
     (deprecated; use :class:`~pyqtgraph.ImageView` instead)
     """
     def __init__(self, *args, **kargs):
+        warnings.warn(
+            'ImageWindow is deprecated, use ImageView instead'
+            'will be removed in 0.13',
+            DeprecationWarning, stacklevel=2
+        ) 
         mkQApp()
-        ImageView.__init__(self)
+        self.win = QtWidgets.QMainWindow()
+        self.win.resize(800,600)
         if 'title' in kargs:
-            self.setWindowTitle(kargs['title'])
+            self.win.setWindowTitle(kargs['title'])
             del kargs['title']
+        ImageView.__init__(self, self.win)
         if len(args) > 0 or len(kargs) > 0:
             self.setImage(*args, **kargs)
-        self.show()
-
+        
+        self.win.setCentralWidget(self)
+        for m in ['resize']:
+            setattr(self, m, getattr(self.win, m))
+        self.win.show()
+    
     def closeEvent(self, event):
         ImageView.closeEvent(self, event)
         self.sigClosed.emit(self)

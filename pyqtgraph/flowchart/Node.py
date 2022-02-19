@@ -1,12 +1,16 @@
-# -*- coding: utf-8 -*-
-from ..Qt import QtCore, QtGui
-from ..graphicsItems.GraphicsObject import GraphicsObject
-from .. import functions as fn
-from .Terminal import *
-from ..pgcollections import OrderedDict
-from ..debug import *
-import numpy as np
+__all__ = ["Node", "NodeGraphicsItem"]
 
+import sys
+import warnings
+from collections import OrderedDict
+
+from .. import functions as fn
+from ..debug import printExc
+from ..graphicsItems.GraphicsObject import GraphicsObject
+from ..Qt import QtCore, QtGui, QtWidgets
+from .Terminal import Terminal
+
+translate = QtCore.QCoreApplication.translate
 
 def strDict(d):
     return dict([(str(k), v) for k, v in d.items()])
@@ -16,7 +20,7 @@ class Node(QtCore.QObject):
     Node represents the basic processing unit of a flowchart. 
     A Node subclass implements at least:
     
-    1) A list of input / ouptut terminals and their properties
+    1) A list of input / output terminals and their properties
     2) a process() function which takes the names of input terminals as keyword arguments and returns a dict with the names of output terminals as keys.
 
     A flowchart thus consists of multiple instances of Node subclasses, each of which is connected
@@ -189,6 +193,12 @@ class Node(QtCore.QObject):
     ## this is just bad planning. Causes too many bugs.
     def __getattr__(self, attr):
         """Return the terminal with the given name"""
+        warnings.warn(
+            "Use of note.terminalName is deprecated, use node['terminalName'] instead"
+            "Will be removed from 0.13.0",
+            DeprecationWarning, stacklevel=2
+        )
+        
         if attr not in self.terminals:
             raise AttributeError(attr)
         else:
@@ -436,14 +446,32 @@ class Node(QtCore.QObject):
             t.disconnectAll()
     
 
-#class NodeGraphicsItem(QtGui.QGraphicsItem):
+class TextItem(QtWidgets.QGraphicsTextItem):
+    def __init__(self, text, parent, on_update):
+        super().__init__(text, parent)
+        self.on_update = on_update
+
+    def focusOutEvent(self, ev):
+        super().focusOutEvent(ev)
+        if self.on_update is not None:
+            self.on_update()
+
+    def keyPressEvent(self, ev):
+        if ev.key() == QtCore.Qt.Key.Key_Enter or ev.key() == QtCore.Qt.Key.Key_Return:
+            if self.on_update is not None:
+                self.on_update()
+                return
+        super().keyPressEvent(ev)
+
+
+#class NodeGraphicsItem(QtWidgets.QGraphicsItem):
 class NodeGraphicsItem(GraphicsObject):
     def __init__(self, node):
-        #QtGui.QGraphicsItem.__init__(self)
+        #QtWidgets.QGraphicsItem.__init__(self)
         GraphicsObject.__init__(self)
         #QObjectWorkaround.__init__(self)
         
-        #self.shadow = QtGui.QGraphicsDropShadowEffect()
+        #self.shadow = QtWidgets.QGraphicsDropShadowEffect()
         #self.shadow.setOffset(5,5)
         #self.shadow.setBlurRadius(10)
         #self.setGraphicsEffect(self.shadow)
@@ -456,21 +484,18 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
         
         self.node = node
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemIsFocusable |self.ItemSendsGeometryChanges
+        flags = self.GraphicsItemFlag.ItemIsMovable | self.GraphicsItemFlag.ItemIsSelectable | self.GraphicsItemFlag.ItemIsFocusable | self.GraphicsItemFlag.ItemSendsGeometryChanges
         #flags =  self.ItemIsFocusable |self.ItemSendsGeometryChanges
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
-        self.nameItem = QtGui.QGraphicsTextItem(self.node.name(), self)
+        self.nameItem = TextItem(self.node.name(), self, self.labelChanged)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
-        self.nameItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
+        self.nameItem.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
         self.updateTerminals()
         #self.setZValue(10)
 
-        self.nameItem.focusOutEvent = self.labelFocusOut
-        self.nameItem.keyPressEvent = self.labelKeyPress
-        
         self.menu = None
         self.buildMenu()
         
@@ -481,18 +506,8 @@ class NodeGraphicsItem(GraphicsObject):
             #item.setZValue(z+1)
         #GraphicsObject.setZValue(self, z)
         
-    def labelFocusOut(self, ev):
-        QtGui.QGraphicsTextItem.focusOutEvent(self.nameItem, ev)
-        self.labelChanged()
-        
-    def labelKeyPress(self, ev):
-        if ev.key() == QtCore.Qt.Key_Enter or ev.key() == QtCore.Qt.Key_Return:
-            self.labelChanged()
-        else:
-            QtGui.QGraphicsTextItem.keyPressEvent(self.nameItem, ev)
-        
     def labelChanged(self):
-        newName = str(self.nameItem.toPlainText())
+        newName = self.nameItem.toPlainText()
         if newName != self.node.name():
             self.node.rename(newName)
             
@@ -510,31 +525,41 @@ class NodeGraphicsItem(GraphicsObject):
         
         
     def updateTerminals(self):
-        bounds = self.bounds
         self.terminals = {}
         inp = self.node.inputs()
-        dy = bounds.height() / (len(inp)+1)
-        y = dy
+        out = self.node.outputs()
+        
+        maxNode = max(len(inp), len(out))
+        titleOffset = 25
+        nodeOffset = 12
+        
+        # calculate new height
+        newHeight = titleOffset+maxNode*nodeOffset
+        
+        # if current height is not equal to new height, update
+        if not self.bounds.height() == newHeight:
+            self.bounds.setHeight(newHeight)
+            self.update()
+
+        # Populate inputs
+        y = titleOffset
         for i, t in inp.items():
             item = t.graphicsItem()
             item.setParentItem(self)
             #item.setZValue(self.zValue()+1)
-            br = self.bounds
             item.setAnchor(0, y)
             self.terminals[i] = (t, item)
-            y += dy
+            y += nodeOffset
         
-        out = self.node.outputs()
-        dy = bounds.height() / (len(out)+1)
-        y = dy
+        # Populate inputs
+        y = titleOffset
         for i, t in out.items():
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setZValue(self.zValue())
-            br = self.bounds
-            item.setAnchor(bounds.width(), y)
+            item.setAnchor(self.bounds.width(), y)
             self.terminals[i] = (t, item)
-            y += dy
+            y += nodeOffset
         
         #self.buildMenu()
         
@@ -564,11 +589,11 @@ class NodeGraphicsItem(GraphicsObject):
 
     def mouseClickEvent(self, ev):
         #print "Node.mouseClickEvent called."
-        if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        if ev.button() == QtCore.Qt.MouseButton.LeftButton:
             ev.accept()
             #print "    ev.button: left"
             sel = self.isSelected()
-            #ret = QtGui.QGraphicsItem.mousePressEvent(self, ev)
+            #ret = QtWidgets.QGraphicsItem.mousePressEvent(self, ev)
             self.setSelected(True)
             if not sel and self.isSelected():
                 #self.setBrush(QtGui.QBrush(QtGui.QColor(200, 200, 255)))
@@ -577,7 +602,7 @@ class NodeGraphicsItem(GraphicsObject):
                 self.update()
             #return ret
         
-        elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        elif ev.button() == QtCore.Qt.MouseButton.RightButton:
             #print "    ev.button: right"
             ev.accept()
             #pos = ev.screenPos()
@@ -586,20 +611,20 @@ class NodeGraphicsItem(GraphicsObject):
             
     def mouseDragEvent(self, ev):
         #print "Node.mouseDrag"
-        if ev.button() == QtCore.Qt.LeftButton:
+        if ev.button() == QtCore.Qt.MouseButton.LeftButton:
             ev.accept()
             self.setPos(self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos()))
         
     def hoverEvent(self, ev):
-        if not ev.isExit() and ev.acceptClicks(QtCore.Qt.LeftButton):
-            ev.acceptDrags(QtCore.Qt.LeftButton)
+        if not ev.isExit() and ev.acceptClicks(QtCore.Qt.MouseButton.LeftButton):
+            ev.acceptDrags(QtCore.Qt.MouseButton.LeftButton)
             self.hovered = True
         else:
             self.hovered = False
         self.update()
             
     def keyPressEvent(self, ev):
-        if ev.key() == QtCore.Qt.Key_Delete or ev.key() == QtCore.Qt.Key_Backspace:
+        if ev.key() == QtCore.Qt.Key.Key_Delete or ev.key() == QtCore.Qt.Key.Key_Backspace:
             ev.accept()
             if not self.node._allowRemove:
                 return
@@ -608,7 +633,7 @@ class NodeGraphicsItem(GraphicsObject):
             ev.ignore()
 
     def itemChange(self, change, val):
-        if change == self.ItemPositionHasChanged:
+        if change == self.GraphicsItemChange.ItemPositionHasChanged:
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
         return GraphicsObject.itemChange(self, change, val)
@@ -623,15 +648,15 @@ class NodeGraphicsItem(GraphicsObject):
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
         
     def buildMenu(self):
-        self.menu = QtGui.QMenu()
-        self.menu.setTitle("Node")
-        a = self.menu.addAction("Add input", self.addInputFromMenu)
+        self.menu = QtWidgets.QMenu()
+        self.menu.setTitle(translate("Context Menu", "Node"))
+        a = self.menu.addAction(translate("Context Menu","Add input"), self.addInputFromMenu)
         if not self.node._allowAddInput:
             a.setEnabled(False)
-        a = self.menu.addAction("Add output", self.addOutputFromMenu)
+        a = self.menu.addAction(translate("Context Menu", "Add output"), self.addOutputFromMenu)
         if not self.node._allowAddOutput:
             a.setEnabled(False)
-        a = self.menu.addAction("Remove node", self.node.close)
+        a = self.menu.addAction(translate("Context Menu", "Remove node"), self.node.close)
         if not self.node._allowRemove:
             a.setEnabled(False)
         

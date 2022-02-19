@@ -1,11 +1,11 @@
 if __name__ == '__main__':
-    import os, sys
+    import os
+    import sys
     path = os.path.abspath(os.path.dirname(__file__))
     sys.path.insert(0, os.path.join(path, '..', '..'))
 
-from ..Qt import QtGui, QtCore
 from .. import functions as fn
-import weakref
+from ..Qt import QtGui, QtWidgets
 from .UIGraphicsItem import UIGraphicsItem
 
 __all__ = ['VTickGroup']
@@ -39,7 +39,7 @@ class VTickGroup(UIGraphicsItem):
         if pen is None:
             pen = (200, 200, 200)
             
-        self.path = QtGui.QGraphicsPathItem()
+        self.path = QtWidgets.QGraphicsPathItem()
         
         self.ticks = []
         self.xvals = []

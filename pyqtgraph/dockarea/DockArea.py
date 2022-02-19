@@ -1,19 +1,17 @@
-# -*- coding: utf-8 -*-
 import weakref
-from ..Qt import QtCore, QtGui
-from .Container import *
-from .DockDrop import *
+
+from ..Qt import QtWidgets
+from .Container import Container, HContainer, TContainer, VContainer
 from .Dock import Dock
-from .. import debug as debug
-from ..python2_3 import basestring
+from .DockDrop import DockDrop
 
 
-class DockArea(Container, QtGui.QWidget, DockDrop):
+class DockArea(Container, QtWidgets.QWidget, DockDrop):
     def __init__(self, parent=None, temporary=False, home=None):
         Container.__init__(self, self)
-        QtGui.QWidget.__init__(self, parent=parent)
+        QtWidgets.QWidget.__init__(self, parent=parent)
         DockDrop.__init__(self, allowedAreas=['left', 'right', 'top', 'bottom'])
-        self.layout = QtGui.QVBoxLayout()
+        self.layout = QtWidgets.QVBoxLayout()
         self.layout.setContentsMargins(0,0,0,0)
         self.layout.setSpacing(0)
         self.setLayout(self.layout)
@@ -62,7 +60,7 @@ class DockArea(Container, QtGui.QWidget, DockDrop):
                 container = self.topContainer
                 neighbor = None
         else:
-            if isinstance(relativeTo, basestring):
+            if isinstance(relativeTo, str):
                 relativeTo = self.docks[relativeTo]
             container = self.getContainer(relativeTo)
             if container is None:
@@ -131,6 +129,8 @@ class DockArea(Container, QtGui.QWidget, DockDrop):
             new = HContainer(self)
         elif typ == 'tab':
             new = TContainer(self)
+        else:
+            raise ValueError("typ must be one of 'vertical', 'horizontal', or 'tab'")
         return new
         
     def addContainer(self, typ, obj):
@@ -319,7 +319,7 @@ class DockArea(Container, QtGui.QWidget, DockDrop):
         #print "apoptose area:", self.temporary, self.topContainer, self.topContainer.count()
         if self.topContainer is None or self.topContainer.count() == 0:
             self.topContainer = None
-            if self.temporary:
+            if self.temporary and self.home is not None:
                 self.home.removeTempArea(self)
                 #self.close()
                 
@@ -365,10 +365,10 @@ class DockArea(Container, QtGui.QWidget, DockDrop):
 
 
 
-class TempAreaWindow(QtGui.QWidget):
+class TempAreaWindow(QtWidgets.QWidget):
     def __init__(self, area, **kwargs):
-        QtGui.QWidget.__init__(self, **kwargs)
-        self.layout = QtGui.QGridLayout()
+        QtWidgets.QWidget.__init__(self, **kwargs)
+        self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.dockarea = area
@@ -382,4 +382,4 @@ class TempAreaWindow(QtGui.QWidget):
                 dock.orig_area.addDock(dock, )
         # clear dock area, and close remaining docks
         self.dockarea.clear()
-        QtGui.QWidget.closeEvent(self, *args)
+        super().closeEvent(*args)

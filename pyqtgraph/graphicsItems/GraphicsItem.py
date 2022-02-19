@@ -1,10 +1,38 @@
-from ..Qt import QtGui, QtCore, isQObjectAlive
+import operator
+import warnings
+import weakref
+from collections import OrderedDict
+from functools import reduce
+from math import hypot
+
+from .. import functions as fn
 from ..GraphicsScene import GraphicsScene
 from ..Point import Point
-from .. import functions as fn
-import weakref
-import operator
-from ..util.lru_cache import LRUCache
+from ..Qt import QtCore, QtWidgets, isQObjectAlive
+
+__all__ = ['GraphicsItem']
+
+# Recipe from https://docs.python.org/3.8/library/collections.html#collections.OrderedDict
+# slightly adapted for Python 3.7 compatibility
+class LRU(OrderedDict):
+    'Limit size, evicting the least recently looked-up key when full'
+
+    def __init__(self, maxsize=128, *args, **kwds):
+        self.maxsize = maxsize
+        super().__init__(*args, **kwds)
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self.maxsize:
+            oldest = next(iter(self))
+            del self[oldest]
 
 
 class GraphicsItem(object):
@@ -18,13 +46,12 @@ class GraphicsItem(object):
 
     The GraphicsView system places a lot of emphasis on the notion that the graphics within the scene should be device independent--you should be able to take the same graphics and display them on screens of different resolutions, printers, export to SVG, etc. This is nice in principle, but causes me a lot of headache in practice. It means that I have to circumvent all the device-independent expectations any time I want to operate in pixel coordinates rather than arbitrary scene coordinates. A lot of the code in GraphicsItem is devoted to this task--keeping track of view widgets and device transforms, computing the size and shape of a pixel in local item coordinates, etc. Note that in item coordinates, a pixel does not have to be square or even rectangular, so just asking how to increase a bounding rect by 2px can be a rather complex task.
     """
-    _pixelVectorGlobalCache = LRUCache(100, 70)
-    _mapRectFromViewGlobalCache = LRUCache(100, 70)
+    _pixelVectorGlobalCache = LRU(100)
 
     def __init__(self, register=None):
         if not hasattr(self, '_qtBaseClass'):
             for b in self.__class__.__bases__:
-                if issubclass(b, QtGui.QGraphicsItem):
+                if issubclass(b, QtWidgets.QGraphicsItem):
                     self.__class__._qtBaseClass = b
                     break
         if not hasattr(self, '_qtBaseClass'):
@@ -35,9 +62,10 @@ class GraphicsItem(object):
         self._viewBox = None
         self._connectedView = None
         self._exportOpts = False   ## If False, not currently exporting. Otherwise, contains dict of export options.
+        self._cachedView = None
         if register is not None and register:
             warnings.warn(
-                "'register' argument is deprecated and does nothing",
+                "'register' argument is deprecated and does nothing, will be removed in 0.13",
                 DeprecationWarning, stacklevel=2
             )
 
@@ -101,10 +129,6 @@ class GraphicsItem(object):
         Return the transform that converts local item coordinates to device coordinates (usually pixels).
         Extends deviceTransform to automatically determine the viewportTransform.
         """
-        if self._exportOpts is not False and 'painter' in self._exportOpts: ## currently exporting; device transform may be different.
-            scaler = self._exportOpts.get('resolutionScale', 1.0)
-            return self.sceneTransform() * QtGui.QTransform(scaler, 0, 0, scaler, 1, 1)
-
         if viewportTransform is None:
             view = self.getViewWidget()
             if view is None:
@@ -146,13 +170,17 @@ class GraphicsItem(object):
             p = p.parentItem()
             if p is None:
                 break
-            if p.flags() & self.ItemClipsChildrenToShape:
+            if p.flags() & self.GraphicsItemFlag.ItemClipsChildrenToShape:
                 parents.append(p)
         return parents
     
     def viewRect(self):
         """Return the visible bounds of this item's ViewBox or GraphicsWidget,
         in the local coordinate system of the item."""
+        if self._cachedView is not None:
+            return self._cachedView
+
+        # Note that in cases of early returns here, the view cache stays empty (None).
         view = self.getViewBox()
         if view is None:
             return None
@@ -162,10 +190,12 @@ class GraphicsItem(object):
 
         bounds = bounds.normalized()
         
+        self._cachedView = bounds
+            
         ## nah.
         #for p in self.getBoundingParents():
             #bounds &= self.mapRectFromScene(p.sceneBoundingRect())
-            
+
         return bounds
         
         
@@ -269,7 +299,7 @@ class GraphicsItem(object):
         Return None if pixel size is not yet defined (usually because the item has not yet been displayed).
         """
         normV, orthoV = self.pixelVectors(direction)
-        if normV == None or orthoV == None:
+        if normV is None or orthoV is None:
             return None
         if ortho:
             return orthoV.length()
@@ -281,7 +311,7 @@ class GraphicsItem(object):
         v = self.pixelVectors()
         if v == (None, None):
             return None, None
-        return (v[0].x()**2+v[0].y()**2)**0.5, (v[1].x()**2+v[1].y()**2)**0.5
+        return (hypot(v[0].x(), v[0].y()), hypot(v[1].x(), v[1].y()))  # lengths
 
     def pixelWidth(self):
         ## deprecated
@@ -368,21 +398,8 @@ class GraphicsItem(object):
         vt = self.viewTransform()
         if vt is None:
             return None
-
-        cache = self._mapRectFromViewGlobalCache
-        k = (
-            vt.m11(), vt.m12(), vt.m13(),
-            vt.m21(), vt.m22(), vt.m23(),
-            vt.m31(), vt.m32(), vt.m33(),
-        )
-
-        try:
-            inv_vt = cache[k]
-        except KeyError:
-            inv_vt = fn.invertQTransform(vt)
-            cache[k] = inv_vt
-
-        return inv_vt.mapRect(obj)
+        vt = fn.invertQTransform(vt)
+        return vt.mapRect(obj)
 
     def pos(self):
         return Point(self._qtBaseClass.pos(self))
@@ -423,19 +440,16 @@ class GraphicsItem(object):
         """
         if relativeItem is None:
             relativeItem = self.parentItem()
-            
 
         tr = self.itemTransform(relativeItem)
         if isinstance(tr, tuple):  ## difference between pyside and pyqt
             tr = tr[0]
-        #vec = tr.map(Point(1,0)) - tr.map(Point(0,0))
         vec = tr.map(QtCore.QLineF(0,0,1,0))
-        #return Point(vec).angle(Point(1,0))
         return vec.angleTo(QtCore.QLineF(vec.p1(), vec.p1()+QtCore.QPointF(1,0)))
         
     #def itemChange(self, change, value):
         #ret = self._qtBaseClass.itemChange(self, change, value)
-        #if change == self.ItemParentHasChanged or change == self.ItemSceneHasChanged:
+        #if change == self.GraphicsItemChange.ItemParentHasChanged or change == self.ItemSceneHasChanged:
             #print "Item scene changed:", self
             #self.setChildScene(self)  ## This is bizarre.
         #return ret
@@ -446,7 +460,7 @@ class GraphicsItem(object):
             #if ch2.scene() is not scene:
                 #print "item", ch2, "has different scene:", ch2.scene(), scene
                 #scene.addItem(ch2)
-                #QtGui.QApplication.processEvents()
+                #QtWidgets.QApplication.processEvents()
                 #print "   --> ", ch2.scene()
             #self.setChildScene(ch2)
 
@@ -522,7 +536,6 @@ class GraphicsItem(object):
     def viewChanged(self, view, oldView):
         """Called when this item's view has changed
         (ie, the item has been added to or removed from a ViewBox)"""
-        pass
         
     def _replaceView(self, oldView, item=None):
         if item is None:
@@ -541,14 +554,16 @@ class GraphicsItem(object):
         """
         Called whenever the view coordinates of the ViewBox containing this item have changed.
         """
-        pass
+        # when this is called, _cachedView is not invalidated.
+        # this means that for functions overriding viewRangeChanged, viewRect() may be stale.
     
     def viewTransformChanged(self):
         """
         Called whenever the transformation matrix of the view has changed.
         (eg, the view range has changed or the view was resized)
+        Invalidates the viewRect cache.
         """
-        pass
+        self._cachedView = None
     
     #def prepareGeometryChange(self):
         #self._qtBaseClass.prepareGeometryChange(self)

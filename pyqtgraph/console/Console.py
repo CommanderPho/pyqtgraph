@@ -1,39 +1,36 @@
-# -*- coding: utf-8 -*-
-import sys, re, os, time, traceback, subprocess
+import importlib
 import pickle
+import re
+import subprocess
+import sys
+import traceback
 
-from ..Qt import QtCore, QtGui, QT_LIB
-from ..python2_3 import basestring
 from .. import exceptionHandling as exceptionHandling
 from .. import getConfigOption
 from ..functions import SignalBlock
-if QT_LIB == 'PySide':
-    from . import template_pyside as template
-elif QT_LIB == 'PySide2':
-    from . import template_pyside2 as template
-elif QT_LIB == 'PyQt5':
-    from . import template_pyqt5 as template
-else:
-    from . import template_pyqt as template
+from ..Qt import QT_LIB, QtCore, QtGui, QtWidgets
+
+ui_template = importlib.import_module(
+    f'.template_{QT_LIB.lower()}', package=__package__)
 
 
-class ConsoleWidget(QtGui.QWidget):
+class ConsoleWidget(QtWidgets.QWidget):
     """
     Widget displaying console output and accepting command input.
     Implements:
         
-    - eval python expressions / exec python statements
-    - storable history of commands
-    - exception handling allowing commands to be interpreted in the context of any level in the exception stack frame
+      - eval python expressions / exec python statements
+      - storable history of commands
+      - exception handling allowing commands to be interpreted in the context of any level in the exception stack frame
     
     Why not just use python in an interactive shell (or ipython) ? There are a few reasons:
        
-    - pyside does not yet allow Qt event processing and interactive shell at the same time
-    - on some systems, typing in the console _blocks_ the qt event loop until the user presses enter. This can 
-      be baffling and frustrating to users since it would appear the program has frozen.
-    - some terminals (eg windows cmd.exe) have notoriously unfriendly interfaces
-    - ability to add extra features like exception stack introspection
-    - ability to have multiple interactive prompts, including for spawned sub-processes
+      - pyside does not yet allow Qt event processing and interactive shell at the same time
+      - on some systems, typing in the console _blocks_ the qt event loop until the user presses enter. This can
+        be baffling and frustrating to users since it would appear the program has frozen.
+      - some terminals (eg windows cmd.exe) have notoriously unfriendly interfaces
+      - ability to add extra features like exception stack introspection
+      - ability to have multiple interactive prompts, including for spawned sub-processes
     """
     _threadException = QtCore.Signal(object)
     
@@ -50,7 +47,7 @@ class ConsoleWidget(QtGui.QWidget):
                             editorCommand --loadfile {fileName} --gotoline {lineNum}
         ==============  =============================================================================
         """
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         if namespace is None:
             namespace = {}
         namespace['__console__'] = self
@@ -60,7 +57,7 @@ class ConsoleWidget(QtGui.QWidget):
         self.inCmd = False
         self.frames = []  # stack frames to access when an item in the stack list is selected
         
-        self.ui = template.Ui_Form()
+        self.ui = ui_template.Ui_Form()
         self.ui.setupUi(self)
         self.output = self.ui.output
         self.input = self.ui.input
@@ -109,8 +106,10 @@ class ConsoleWidget(QtGui.QWidget):
                 pickle.dump(pf, history)
         
     def runCmd(self, cmd):
-        self.stdout = sys.stdout
-        self.stderr = sys.stderr
+        #cmd = str(self.input.lastCmd)
+
+        orig_stdout = sys.stdout
+        orig_stderr = sys.stderr
         encCmd = re.sub(r'>', '&gt;', re.sub(r'<', '&lt;', cmd))
         encCmd = re.sub(r' ', '&nbsp;', encCmd)
         
@@ -132,8 +131,8 @@ class ConsoleWidget(QtGui.QWidget):
                 self.write("</div>\n", html=True, scrollToBottom=True)
                 
         finally:
-            sys.stdout = self.stdout
-            sys.stderr = self.stderr
+            sys.stdout = orig_stdout
+            sys.stderr = orig_stderr
             
             sb = self.ui.historyList.verticalScrollBar()
             sb.setValue(sb.maximum())
@@ -164,21 +163,25 @@ class ConsoleWidget(QtGui.QWidget):
         try:
             output = eval(cmd, self.globals(), self.locals())
             self.write(repr(output) + '\n')
+            return
         except SyntaxError:
-            try:
-                exec(cmd, self.globals(), self.locals())
-            except SyntaxError as exc:
-                if 'unexpected EOF' in exc.msg:
-                    self.multiline = cmd
-                else:
-                    self.displayException()
-            except:
+            pass
+        except:
+            self.displayException()
+            return
+
+        # eval failed with syntax error; try exec instead
+        try:
+            exec(cmd, self.globals(), self.locals())
+        except SyntaxError as exc:
+            if 'unexpected EOF' in exc.msg:
+                self.multiline = cmd
+            else:
                 self.displayException()
         except:
             self.displayException()
             
     def execMulti(self, nextLine):
-        #self.stdout.write(nextLine+"\n")
         if nextLine.strip() != '':
             self.multiline += "\n" + nextLine
             return
@@ -189,22 +192,28 @@ class ConsoleWidget(QtGui.QWidget):
             output = eval(cmd, self.globals(), self.locals())
             self.write(str(output) + '\n')
             self.multiline = None
+            return
         except SyntaxError:
-            try:
-                exec(cmd, self.globals(), self.locals())
-                self.multiline = None
-            except SyntaxError as exc:
-                if 'unexpected EOF' in exc.msg:
-                    self.multiline = cmd
-                else:
-                    self.displayException()
-                    self.multiline = None
-            except:
+            pass
+        except:
+            self.displayException()
+            self.multiline = None
+            return
+
+        # eval failed with syntax error; try exec instead
+        try:
+            exec(cmd, self.globals(), self.locals())
+            self.multiline = None
+        except SyntaxError as exc:
+            if 'unexpected EOF' in exc.msg:
+                self.multiline = cmd
+            else:
                 self.displayException()
                 self.multiline = None
         except:
             self.displayException()
             self.multiline = None
+
 
     def write(self, strn, html=False, scrollToBottom='auto'):
         """Write a string into the console.
@@ -214,7 +223,7 @@ class ConsoleWidget(QtGui.QWidget):
         """
         isGuiThread = QtCore.QThread.currentThread() == QtCore.QCoreApplication.instance().thread()
         if not isGuiThread:
-            self.stdout.write(strn)
+            sys.__stdout__.write(strn)
             return
 
         sb = self.output.verticalScrollBar()
@@ -223,7 +232,7 @@ class ConsoleWidget(QtGui.QWidget):
             atBottom = scroll == sb.maximum()
             scrollToBottom = atBottom
 
-        self.output.moveCursor(QtGui.QTextCursor.End)
+        self.output.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         if html:
             self.output.textCursor().insertHtml(strn)
         else:
@@ -236,6 +245,11 @@ class ConsoleWidget(QtGui.QWidget):
             sb.setValue(sb.maximum())
         else:
             sb.setValue(scroll)
+
+    
+    def fileno(self):
+        # Need to implement this since we temporarily occlude sys.stdout, and someone may be looking for it (faulthandler, for example)
+        return 1
 
     def displayException(self):
         """
@@ -319,8 +333,8 @@ class ConsoleWidget(QtGui.QWidget):
         if editor is None:
             return
         tb = self.currentFrame()
-        lineNum = tb.tb_lineno
-        fileName = tb.tb_frame.f_code.co_filename
+        lineNum = tb.f_lineno
+        fileName = tb.f_code.co_filename
         subprocess.Popen(self.editor.format(fileName=fileName, lineNum=lineNum), shell=True)
         
     def updateSysTrace(self):
@@ -441,8 +455,8 @@ class ConsoleWidget(QtGui.QWidget):
         filterStr = str(self.ui.filterText.text())
         if filterStr != '':
             if isinstance(exc, Exception):
-                msg = exc.message
-            elif isinstance(exc, basestring):
+                msg = traceback.format_exception_only(type(exc), exc)
+            elif isinstance(exc, str):
                 msg = exc
             else:
                 msg = repr(exc)

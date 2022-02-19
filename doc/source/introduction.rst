@@ -45,20 +45,14 @@ Examples
 --------
 
 PyQtGraph includes an extensive set of examples that can be accessed by
-running::
+running either ``python -m pyqtgraph.examples`` or ::
 
     import pyqtgraph.examples
     pyqtgraph.examples.run()
 
-Or by running ``python examples/`` from the source root.
-
 This will start a launcher with a list of available examples. Select an item
 from the list to view its source code and double-click an item to run the
 example.
-
-Note If you have installed pyqtgraph with ``python setup.py develop``
-then the examples are incorrectly exposed as a top-level module. In this case,
-use ``import examples; examples.run()``.
 
 
 How does it compare to...
@@ -84,3 +78,6 @@ How does it compare to...
 
 (My experience with these libraries is somewhat outdated; please correct me if
 I am wrong here)
+
+
+.. rubric:: Footnotes
