@@ -13,18 +13,68 @@ class CheckTable(QtWidgets.QWidget):
         self.layout.setSpacing(0)
         self.setLayout(self.layout)
         self.headers = []
-        self.columns = columns
-        col = 1
-        for c in columns:
-            label = VerticalLabel.VerticalLabel(c, orientation='vertical')
-            self.headers.append(label)
-            self.layout.addWidget(label, 0, col)
-            col += 1
+        self.columnNames = []
+        self.updateColumns(columns)
         
         self.rowNames = []
         self.rowWidgets = []
         self.oldRows = {}  ## remember settings from removed rows; reapply if they reappear.
         
+        
+    def updateColumns(self, columns):
+        # add only:
+        self.headers = []
+        self.columnNames = columns # no columns
+        # self.columnNames = [] # no columns
+        # col = 1
+        for c in columns:
+            # label = VerticalLabel.VerticalLabel(c, orientation='vertical')
+            # self.headers.append(label)
+            # self.layout.addWidget(label, 0, col)
+            self.addColumn(c)
+            # col += 1
+            
+    def addColumn(self, name):
+        label = VerticalLabel.VerticalLabel(name, orientation='vertical')
+        self.headers.append(label)
+        # col = len(self.columnNames)+1
+        col = len(self.headers) # since this occurs after we add the header widget, it's correct
+        self.layout.addWidget(label, 0, col)
+        # # TODO: clear make checkmarks for all rows. Currently requires clearing all rows first before adding columns:
+        # row = len(self.rowNames)+1
+        # checks = []
+        # col = 1
+        # for c in self.columnNames:
+        #     check = QtWidgets.QCheckBox('')
+        #     check.col = c
+        #     check.row = name
+        #     self.layout.addWidget(check, row, col)
+        #     checks.append(check)
+        #     if name in self.oldRows:
+        #         check.setChecked(self.oldRows[name][col])
+        #     col += 1
+        #     #QtCore.QObject.connect(check, QtCore.SIGNAL('stateChanged(int)'), self.checkChanged)
+        #     check.stateChanged.connect(self.checkChanged)
+        
+    # def removeColumn(self, name):
+    #     row = self.rowNames.index(name)
+    #     self.oldRows[name] = self.saveState()['rows'][row]  ## save for later
+    #     self.rowNames.pop(row)
+    #     for w in self.rowWidgets[row]:
+    #         w.setParent(None)
+    #         #QtCore.QObject.disconnect(w, QtCore.SIGNAL('stateChanged(int)'), self.checkChanged)
+    #         if isinstance(w, QtWidgets.QCheckBox):
+    #             w.stateChanged.disconnect(self.checkChanged)
+    #     self.rowWidgets.pop(row)
+    #     for i in range(row, len(self.rowNames)):
+    #         widgets = self.rowWidgets[i]
+    #         for j in range(len(widgets)):
+    #             widgets[j].setParent(None)
+    #             self.layout.addWidget(widgets[j], i+1, j)
+                
+                
+                
+    # Rows:
 
     def updateRows(self, rows):
         for r in self.rowNames[:]:
@@ -40,7 +90,7 @@ class CheckTable(QtWidgets.QWidget):
         self.layout.addWidget(label, row, 0)
         checks = []
         col = 1
-        for c in self.columns:
+        for c in self.columnNames:
             check = QtWidgets.QCheckBox('')
             check.col = c
             check.row = name
@@ -80,7 +130,7 @@ class CheckTable(QtWidgets.QWidget):
         for i in range(len(self.rowNames)):
             row = [self.rowNames[i]] + [c.isChecked() for c in self.rowWidgets[i][1:]]
             rows.append(row)
-        return {'cols': self.columns, 'rows': rows}
+        return {'cols': self.columnNames, 'rows': rows}
         
     def restoreState(self, state):
         rows = [r[0] for r in state['rows']]
