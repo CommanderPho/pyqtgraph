@@ -11,6 +11,7 @@ from ...widgets.SpinBox import SpinBox
 
 #from ColorMapper import ColorMapper
 from ..Node import Node
+from ...widgets.FeedbackButton import FeedbackButton
 
 try:
     import metaarray
@@ -71,6 +72,8 @@ def generateUi(opts):
             #w = ColorMapper()
         elif t == 'color':
             w = ColorButton()
+        elif t == 'action':
+            w = FeedbackButton()
         else:
             raise Exception("Unknown widget type '%s'" % str(t))
 
