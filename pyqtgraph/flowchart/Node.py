@@ -488,7 +488,7 @@ class NodeGraphicsItem(GraphicsObject):
         #flags =  self.ItemIsFocusable |self.ItemSendsGeometryChanges
 
         self.setFlags(flags)
-        self.bounds = QtCore.QRectF(0, 0, 100, 100)
+        self.bounds = QtCore.QRectF(0, 0, 200, 100)
         self.nameItem = TextItem(self.node.name(), self, self.labelChanged)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
