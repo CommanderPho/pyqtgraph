@@ -1,3 +1,4 @@
+from typing import OrderedDict
 from ..Qt import QtCore, QtWidgets
 from . import VerticalLabel
 
@@ -14,6 +15,7 @@ class CheckTable(QtWidgets.QWidget):
         self.setLayout(self.layout)
         self.headers = []
         self.columnNames = []
+        self.columnsMap = OrderedDict()
         self.updateColumns(columns)
         
         self.rowNames = []
@@ -25,6 +27,7 @@ class CheckTable(QtWidgets.QWidget):
         # add only:
         self.headers = []
         self.columnNames = columns # no columns
+        self.columnsMap = OrderedDict()
         # self.columnNames = [] # no columns
         # col = 1
         for c in columns:
@@ -40,6 +43,9 @@ class CheckTable(QtWidgets.QWidget):
         # col = len(self.columnNames)+1
         col = len(self.headers) # since this occurs after we add the header widget, it's correct
         self.layout.addWidget(label, 0, col)
+        
+        self.columnsMap[name] = (len(self.headers) - 1) # set the index for that column in the columnsMap
+        
         # # TODO: clear make checkmarks for all rows. Currently requires clearing all rows first before adding columns:
         # row = len(self.rowNames)+1
         # checks = []
