@@ -523,6 +523,33 @@ class NodeGraphicsItem(GraphicsObject):
         self.brush = brush
         self.update()
         
+    def _determine_minimum_fitting_width(self):
+        # Determines the minimum width for the node required to fit all of its current terminals and its name.
+        # This can be determined by finding the longest input terminal and the longest output terminal.
+        intra_input_output_spacing = 4
+        
+        widest_input_terminal = 0
+        widest_output_terminal = 0
+        
+        inp = self.node.inputs()
+        out = self.node.outputs()
+        
+        for i, t in inp.items():
+            t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
+            widest_input_terminal = max(widest_output_terminal, item.boundingRect().width())
+
+        for i, t in out.items():
+            t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
+            widest_output_terminal = max(widest_output_terminal, item.boundingRect().width())
+            
+        minimum_terminal_fitting_width = widest_input_terminal + intra_input_output_spacing + widest_output_terminal
+        # name_rect = QtGui.QFontMetricsF(QtGui.QFont()).boundingRect(self.nameItem)
+        minimum_name_label_fitting_width = self.nameItem.boundingRect().width()
+        
+        final_width = max(minimum_terminal_fitting_width, minimum_name_label_fitting_width)
+        print(f'minimum_terminal_fitting_width: {minimum_terminal_fitting_width}, minimum_name_label_fitting_width: {minimum_name_label_fitting_width}, final_width: {final_width}')
+        return final_width
+        
         
     def updateTerminals(self):
         self.terminals = {}
@@ -530,8 +557,8 @@ class NodeGraphicsItem(GraphicsObject):
         out = self.node.outputs()
         
         maxNode = max(len(inp), len(out))
-        titleOffset = 25
-        nodeOffset = 12
+        titleOffset = 25 # the title is 25 px tall
+        nodeOffset = 12 # the height per node
         
         # calculate new height
         newHeight = titleOffset+maxNode*nodeOffset
