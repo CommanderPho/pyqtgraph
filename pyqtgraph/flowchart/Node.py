@@ -549,7 +549,7 @@ class NodeGraphicsItem(GraphicsObject):
         minimum_name_label_fitting_width = self.nameItem.boundingRect().width()
         
         final_width = max(minimum_terminal_fitting_width, minimum_name_label_fitting_width)
-        print(f'minimum_terminal_fitting_width: {minimum_terminal_fitting_width}, minimum_name_label_fitting_width: {minimum_name_label_fitting_width}, final_width: {final_width}')
+        # print(f'minimum_terminal_fitting_width: {minimum_terminal_fitting_width}, minimum_name_label_fitting_width: {minimum_name_label_fitting_width}, final_width: {final_width}')
         return final_width
         
         
