@@ -526,7 +526,7 @@ class NodeGraphicsItem(GraphicsObject):
     def _determine_minimum_fitting_width(self):
         # Determines the minimum width for the node required to fit all of its current terminals and its name.
         # This can be determined by finding the longest input terminal and the longest output terminal.
-        intra_input_output_spacing = 4
+        intra_input_output_spacing = 20
         
         widest_input_terminal = 0
         widest_output_terminal = 0
@@ -535,11 +535,13 @@ class NodeGraphicsItem(GraphicsObject):
         out = self.node.outputs()
         
         for i, t in inp.items():
-            t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
+            item = t.graphicsItem() # t: Terminal, item: TerminalGraphicsItem
+            # t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
             widest_input_terminal = max(widest_output_terminal, item.boundingRect().width())
 
         for i, t in out.items():
-            t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
+            item = t.graphicsItem() # t: Terminal, item: TerminalGraphicsItem
+            # t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
             widest_output_terminal = max(widest_output_terminal, item.boundingRect().width())
             
         minimum_terminal_fitting_width = widest_input_terminal + intra_input_output_spacing + widest_output_terminal
@@ -562,10 +564,21 @@ class NodeGraphicsItem(GraphicsObject):
         
         # calculate new height
         newHeight = titleOffset+maxNode*nodeOffset
+        newWidth = self._determine_minimum_fitting_width()
         
+        needs_update = False
         # if current height is not equal to new height, update
         if not self.bounds.height() == newHeight:
             self.bounds.setHeight(newHeight)
+            needs_update = True
+        if not self.bounds.width() == newWidth:
+            self.bounds.setWidth(newWidth)
+            needs_update = True 
+            
+        if needs_update:
+            ### re-center the label
+            bounds = self.boundingRect()
+            self.nameItem.setPos(bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0) 
             self.update()
 
         # Populate inputs
