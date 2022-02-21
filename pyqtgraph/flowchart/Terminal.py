@@ -301,7 +301,7 @@ class TerminalGraphicsItem(GraphicsObject):
         self.term = term
         GraphicsObject.__init__(self, parent)
         self.brush = fn.mkBrush(0,0,0)
-        self.box = QtWidgets.QGraphicsRectItem(0, 0, 10, 10, self)
+        self.box = QtWidgets.QGraphicsRectItem(0, 0, 10, 10, self) # Specifies the 10x10 target box that items can be connected to
         on_update = self.labelChanged if self.term.isRenamable() else None
         self.label = TextItem(self.term.name(), self, on_update)
         self.label.setScale(0.7)
