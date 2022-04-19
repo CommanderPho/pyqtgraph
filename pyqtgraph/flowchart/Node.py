@@ -462,6 +462,13 @@ class TextItem(QtWidgets.QGraphicsTextItem):
                 self.on_update()
                 return
         super().keyPressEvent(ev)
+        
+    def mousePressEvent(self, ev):
+        if ev.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
+            self.setFocus(QtCore.Qt.FocusReason.MouseFocusReason)  # focus text label
+        elif ev.button() == QtCore.Qt.MouseButton.RightButton:
+            self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
 
 
 #class NodeGraphicsItem(QtWidgets.QGraphicsItem):
@@ -488,11 +495,10 @@ class NodeGraphicsItem(GraphicsObject):
         #flags =  self.ItemIsFocusable |self.ItemSendsGeometryChanges
 
         self.setFlags(flags)
-        self.bounds = QtCore.QRectF(0, 0, 100, 100)
+        self.bounds = QtCore.QRectF(0, 0, 200, 100)
         self.nameItem = TextItem(self.node.name(), self, self.labelChanged)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
-        self.nameItem.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
         self.updateTerminals()
         #self.setZValue(10)
 
@@ -523,6 +529,35 @@ class NodeGraphicsItem(GraphicsObject):
         self.brush = brush
         self.update()
         
+    def _determine_minimum_fitting_width(self):
+        # Determines the minimum width for the node required to fit all of its current terminals and its name.
+        # This can be determined by finding the longest input terminal and the longest output terminal.
+        intra_input_output_spacing = 20
+        
+        widest_input_terminal = 0
+        widest_output_terminal = 0
+        
+        inp = self.node.inputs()
+        out = self.node.outputs()
+        
+        for i, t in inp.items():
+            item = t.graphicsItem() # t: Terminal, item: TerminalGraphicsItem
+            # t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
+            widest_input_terminal = max(widest_output_terminal, item.boundingRect().width())
+
+        for i, t in out.items():
+            item = t.graphicsItem() # t: Terminal, item: TerminalGraphicsItem
+            # t, item = self.terminals[i] # t: Terminal, item: TerminalGraphicsItem
+            widest_output_terminal = max(widest_output_terminal, item.boundingRect().width())
+            
+        minimum_terminal_fitting_width = widest_input_terminal + intra_input_output_spacing + widest_output_terminal
+        # name_rect = QtGui.QFontMetricsF(QtGui.QFont()).boundingRect(self.nameItem)
+        minimum_name_label_fitting_width = self.nameItem.boundingRect().width()
+        
+        final_width = max(minimum_terminal_fitting_width, minimum_name_label_fitting_width)
+        # print(f'minimum_terminal_fitting_width: {minimum_terminal_fitting_width}, minimum_name_label_fitting_width: {minimum_name_label_fitting_width}, final_width: {final_width}')
+        return final_width
+        
         
     def updateTerminals(self):
         self.terminals = {}
@@ -530,15 +565,26 @@ class NodeGraphicsItem(GraphicsObject):
         out = self.node.outputs()
         
         maxNode = max(len(inp), len(out))
-        titleOffset = 25
-        nodeOffset = 12
+        titleOffset = 25 # the title is 25 px tall
+        nodeOffset = 12 # the height per node
         
         # calculate new height
         newHeight = titleOffset+maxNode*nodeOffset
+        newWidth = self._determine_minimum_fitting_width()
         
+        needs_update = False
         # if current height is not equal to new height, update
         if not self.bounds.height() == newHeight:
             self.bounds.setHeight(newHeight)
+            needs_update = True
+        if not self.bounds.width() == newWidth:
+            self.bounds.setWidth(newWidth)
+            needs_update = True 
+            
+        if needs_update:
+            ### re-center the label
+            bounds = self.boundingRect()
+            self.nameItem.setPos(bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0) 
             self.update()
 
         # Populate inputs
@@ -588,29 +634,18 @@ class NodeGraphicsItem(GraphicsObject):
 
 
     def mouseClickEvent(self, ev):
-        #print "Node.mouseClickEvent called."
         if ev.button() == QtCore.Qt.MouseButton.LeftButton:
             ev.accept()
-            #print "    ev.button: left"
             sel = self.isSelected()
-            #ret = QtWidgets.QGraphicsItem.mousePressEvent(self, ev)
             self.setSelected(True)
             if not sel and self.isSelected():
-                #self.setBrush(QtGui.QBrush(QtGui.QColor(200, 200, 255)))
-                #self.emit(QtCore.SIGNAL('selected'))
-                #self.scene().selectionChanged.emit() ## for some reason this doesn't seem to be happening automatically
                 self.update()
-            #return ret
         
         elif ev.button() == QtCore.Qt.MouseButton.RightButton:
-            #print "    ev.button: right"
             ev.accept()
-            #pos = ev.screenPos()
             self.raiseContextMenu(ev)
-            #self.menu.popup(QtCore.QPoint(pos.x(), pos.y()))
             
     def mouseDragEvent(self, ev):
-        #print "Node.mouseDrag"
         if ev.button() == QtCore.Qt.MouseButton.LeftButton:
             ev.accept()
             self.setPos(self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos()))
@@ -637,7 +672,6 @@ class NodeGraphicsItem(GraphicsObject):
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
         return GraphicsObject.itemChange(self, change, val)
-            
 
     def getMenu(self):
         return self.menu
@@ -645,7 +679,7 @@ class NodeGraphicsItem(GraphicsObject):
     def raiseContextMenu(self, ev):
         menu = self.scene().addParentContextMenus(self, self.getMenu(), ev)
         pos = ev.screenPos()
-        menu.popup(QtCore.QPoint(pos.x(), pos.y()))
+        menu.popup(QtCore.QPoint(int(pos.x()), int(pos.y())))
         
     def buildMenu(self):
         self.menu = QtWidgets.QMenu()

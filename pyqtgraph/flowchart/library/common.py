@@ -11,6 +11,9 @@ from ...widgets.SpinBox import SpinBox
 
 #from ColorMapper import ColorMapper
 from ..Node import Node
+from ...widgets.FeedbackButton import FeedbackButton
+from ...widgets.CheckTable import CheckTable
+
 
 try:
     import metaarray
@@ -71,6 +74,14 @@ def generateUi(opts):
             #w = ColorMapper()
         elif t == 'color':
             w = ColorButton()
+        elif t == 'action':
+            w = FeedbackButton()
+        elif t == 'checktable':
+            if 'columns' in o:
+                col_labels = o['columns']
+            else:
+                raise
+            w = CheckTable(col_labels)
         else:
             raise Exception("Unknown widget type '%s'" % str(t))
 

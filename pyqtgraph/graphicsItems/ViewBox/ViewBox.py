@@ -235,6 +235,8 @@ class ViewBox(GraphicsWidget):
         if name is None:
             self.updateViewLists()
 
+        self._viewPixelSizeCache  = None
+
     def getAspectRatio(self):
         '''return the current aspect ratio'''
         rect = self.rect()
@@ -435,6 +437,7 @@ class ViewBox(GraphicsWidget):
 
     def resizeEvent(self, ev):
         if ev.oldSize() != ev.newSize():
+            self._viewPixelSizeCache  = None
             self._matrixNeedsUpdate = True
 
             self.linkedXChanged()
@@ -529,6 +532,8 @@ class ViewBox(GraphicsWidget):
         ================== =====================================================================
 
         """
+        self._viewPixelSizeCache  = None
+
         changes = {}   # axes
         setRequested = [False, False]
 
@@ -1238,9 +1243,13 @@ class ViewBox(GraphicsWidget):
 
     def viewPixelSize(self):
         """Return the (width, height) of a screen pixel in view coordinates."""
-        o = self.mapToView(Point(0,0))
-        px, py = [Point(self.mapToView(v) - o) for v in self.pixelVectors()]
-        return (px.length(), py.length())
+        if self._viewPixelSizeCache  is None:
+
+            o = self.mapToView(Point(0, 0))
+            px, py = [Point(self.mapToView(v) - o) for v in self.pixelVectors()]
+            self._viewPixelSizeCache  = (px.length(), py.length())
+
+        return self._viewPixelSizeCache 
 
     def itemBoundingRect(self, item):
         """Return the bounding rect of the item in view coordinates"""
@@ -1282,8 +1291,9 @@ class ViewBox(GraphicsWidget):
         ## if axis is specified, event will only affect that axis.
         ev.accept()  ## we accept all buttons
 
-        pos = ev.scenePos()
-        dif = pos - ev.lastScenePos()
+        pos = ev.pos()
+        lastPos = ev.lastPos()
+        dif = pos - lastPos
         dif = dif * -1
 
         ## Ignore axes if mouse is disabled
@@ -1298,14 +1308,14 @@ class ViewBox(GraphicsWidget):
                 if ev.isFinish():  ## This is the final move in the drag; change the view scale now
                     #print "finish"
                     self.rbScaleBox.hide()
-                    ax = QtCore.QRectF(Point(ev.buttonDownScenePos(ev.button())), Point(pos))
-                    ax = self.childGroup.mapRectFromScene(ax)
+                    ax = QtCore.QRectF(Point(ev.buttonDownPos(ev.button())), Point(pos))
+                    ax = self.childGroup.mapRectFromParent(ax)
                     self.showAxRect(ax)
                     self.axHistoryPointer += 1
                     self.axHistory = self.axHistory[:self.axHistoryPointer] + [ax]
                 else:
                     ## update shape of scale box
-                    self.updateScaleBox(ev.buttonDownScenePos(), ev.scenePos())
+                    self.updateScaleBox(ev.buttonDownPos(), ev.pos())
             else:
                 tr = self.childGroup.transform()
                 tr = fn.invertQTransform(tr)
@@ -1369,7 +1379,7 @@ class ViewBox(GraphicsWidget):
 
     def updateScaleBox(self, p1, p2):
         r = QtCore.QRectF(p1, p2)
-        r = self.childGroup.mapRectFromScene(r)
+        r = self.childGroup.mapRectFromParent(r)
         self.rbScaleBox.setPos(r.topLeft())
         tr = QtGui.QTransform.fromScale(r.width(), r.height())
         self.rbScaleBox.setTransform(tr)
