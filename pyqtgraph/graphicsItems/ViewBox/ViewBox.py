@@ -76,7 +76,7 @@ class ViewBox(GraphicsWidget):
     **Bases:** :class:`GraphicsWidget <pyqtgraph.GraphicsWidget>`
 
     Box that allows internal scaling/panning of children by mouse drag.
-    This class is usually created automatically as part of a :class:`PlotItem <pyqtgraph.PlotItem>` or :class:`Canvas <pyqtgraph.canvas.Canvas>` or with :func:`GraphicsLayout.addViewBox() <pyqtgraph.GraphicsLayout.addViewBox>`.
+    This class is usually created automatically as part of a :class:`PlotItem <pyqtgraph.PlotItem>` or :ref:`Canvas <Canvas>` or with :func:`GraphicsLayout.addViewBox() <pyqtgraph.GraphicsLayout.addViewBox>`.
 
     Features:
 
@@ -204,13 +204,7 @@ class ViewBox(GraphicsWidget):
         self.borderRect.setZValue(1e3)
         self.borderRect.setPen(self.border)
 
-        ## Make scale box that is shown when dragging on the view
-        self.rbScaleBox = QtWidgets.QGraphicsRectItem(0, 0, 1, 1)
-        self.rbScaleBox.setPen(fn.mkPen((255,255,100), width=1))
-        self.rbScaleBox.setBrush(fn.mkBrush(255,255,0,100))
-        self.rbScaleBox.setZValue(1e9)
-        self.rbScaleBox.hide()
-        self.addItem(self.rbScaleBox, ignoreBounds=True)
+        self._rbScaleBox = None
 
         ## show target rect for debugging
         self.target = QtWidgets.QGraphicsRectItem(0, 0, 1, 1)
@@ -237,8 +231,33 @@ class ViewBox(GraphicsWidget):
 
         self._viewPixelSizeCache  = None
 
+    @property
+    def rbScaleBox(self):
+        if self._rbScaleBox is None:
+            # call the setter with the default value
+            scaleBox = QtWidgets.QGraphicsRectItem(0, 0, 1, 1)
+            scaleBox.setPen(fn.mkPen((255, 255, 100), width=1))
+            scaleBox.setBrush(fn.mkBrush(255, 255, 0, 100))
+            scaleBox.setZValue(1e9)
+            scaleBox.hide()
+            self._rbScaleBox = scaleBox
+            self.addItem(scaleBox, ignoreBounds=True)
+        return self._rbScaleBox
+
+    @rbScaleBox.setter
+    def rbScaleBox(self, scaleBox):
+        if self._rbScaleBox is not None:
+            self.removeItem(self._rbScaleBox)
+        self._rbScaleBox = scaleBox
+        if scaleBox is None:
+            return None
+        scaleBox.setZValue(1e9)
+        scaleBox.hide()
+        self.addItem(scaleBox, ignoreBounds=True)
+        return None
+
     def getAspectRatio(self):
-        '''return the current aspect ratio'''
+        """return the current aspect ratio"""
         rect = self.rect()
         vr = self.viewRect()
         if rect.height() == 0 or vr.width() == 0 or vr.height() == 0:
@@ -354,6 +373,8 @@ class ViewBox(GraphicsWidget):
         """
         if mode not in [ViewBox.PanMode, ViewBox.RectMode]:
             raise Exception("Mode must be ViewBox.PanMode or ViewBox.RectMode")
+        if mode == ViewBox.PanMode:
+            self._rbScaleBox = None
         self.state['mouseMode'] = mode
         self.sigStateChanged.emit(self)
 
@@ -453,6 +474,10 @@ class ViewBox(GraphicsWidget):
         
             self.sigStateChanged.emit(self)
             self.sigResized.emit(self)
+
+    def boundingRect(self):
+        br = super().boundingRect()
+        return br.adjusted(0, 0, +0.5, +0.5)
 
     def viewRange(self):
         """Return a the view's visible range as a list: [[xmin, xmax], [ymin, ymax]]"""
@@ -572,7 +597,9 @@ class ViewBox(GraphicsWidget):
 
             # If we requested 0 range, try to preserve previous scale.
             # Otherwise just pick an arbitrary scale.
+            preserve = False
             if mn == mx:
+                preserve = True
                 dy = self.state['viewRange'][ax][1] - self.state['viewRange'][ax][0]
                 if dy == 0:
                     dy = 1
@@ -592,13 +619,14 @@ class ViewBox(GraphicsWidget):
                 raise Exception("Cannot set range [%s, %s]" % (str(mn), str(mx)))
 
             # Apply padding
-            if padding is None:
-                xpad = self.suggestPadding(ax)
-            else:
-                xpad = padding
-            p = (mx-mn) * xpad
-            mn -= p
-            mx += p
+            if not preserve:
+                if padding is None:
+                    xpad = self.suggestPadding(ax)
+                else:
+                    xpad = padding
+                p = (mx-mn) * xpad
+                mn -= p
+                mx += p
 
             # max range cannot be larger than bounds, if they are given
             if limits[ax][0] is not None and limits[ax][1] is not None:
@@ -820,7 +848,7 @@ class ViewBox(GraphicsWidget):
         (if *axis* is omitted, both axes will be changed).
         When enabled, the axis will automatically rescale when items are added/removed or change their shape.
         The argument *enable* may optionally be a float (0.0-1.0) which indicates the fraction of the data that should
-        be visible (this only works with items implementing a dataRange method, such as PlotDataItem).
+        be visible (this only works with items implementing a dataBounds method, such as PlotDataItem).
         """
         # support simpler interface:
         if x is not None or y is not None:
@@ -1417,7 +1445,7 @@ class ViewBox(GraphicsWidget):
             useX = True
             useY = True
 
-            if hasattr(item, 'dataBounds'):
+            if hasattr(item, 'dataBounds') and item.dataBounds is not None:
                 if frac is None:
                     frac = (1.0, 1.0)
                 xr = item.dataBounds(0, frac=frac[0], orthoRange=orthoRange[0])
@@ -1601,8 +1629,15 @@ class ViewBox(GraphicsWidget):
                     changed[0] = True
                 viewRange[0] = rangeX
 
-
-        changed = [(viewRange[i][0] != self.state['viewRange'][i][0]) or (viewRange[i][1] != self.state['viewRange'][i][1]) for i in (0,1)]
+        # Consider only as 'changed' if the differences are larger than floating point inaccuracies,
+        # which regularly appear in magnitude of around 1e-15. Therefore, 1e-9 as factor was chosen
+        # more or less arbitrarily.
+        thresholds = [(viewRange[axis][1] - viewRange[axis][0]) * 1.0e-9 for axis in (0,1)]
+        changed = [
+            (abs(viewRange[axis][0] - self.state["viewRange"][axis][0]) > thresholds[axis])
+            or (abs(viewRange[axis][1] - self.state["viewRange"][axis][1]) > thresholds[axis])
+            for axis in (0, 1)
+        ]
         self.state['viewRange'] = viewRange
 
         if any(changed):
